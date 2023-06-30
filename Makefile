@@ -1,6 +1,6 @@
 CONTAINER_COMMAND = $(shell if [ -x "$(shell which docker)" ];then echo "docker" ; else echo "podman";fi)
 INSTALLER := $(or ${INSTALLER},quay.io/edge-infrastructure/assisted-installer:latest)
-CONTROLLER :=  $(or ${CONTROLLER}, quay.io/edge-infrastructure/assisted-installer-controller:latest)
+CONTROLLER :=  $(or ${CONTROLLER}, quay.io/rwsu1/assisted-installer-controller:latest)
 ROOT_DIR = $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
 NAMESPACE := $(or ${NAMESPACE},assisted-installer)
 GIT_REVISION := $(shell git rev-parse HEAD)

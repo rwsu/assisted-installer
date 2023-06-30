@@ -205,7 +205,75 @@ func (c *controller) WaitAndUpdateNodesStatus(ctx context.Context, wg *sync.Wait
 	go c.ApproveCsrs(approveCtx)
 
 	c.log.Infof("Waiting till all nodes will join and update status to assisted installer")
-	_ = utils.WaitForPredicateParamsWithContext(ctx, LongWaitTimeout, GeneralWaitInterval, c.waitAndUpdateNodesStatus, removeUninitializedTaint)
+	// _ = utils.WaitForPredicateParamsWithContext(ctx, LongWaitTimeout, GeneralWaitInterval, c.waitAndUpdateNodesStatus, removeUninitializedTaint)
+
+	_ = utils.WaitForPredicateParamsWithContext(ctx, LongWaitTimeout, GeneralWaitInterval, c.waitAndUpdateNodesStatusSimplified, removeUninitializedTaint)
+}
+
+func (c *controller) waitAndUpdateNodesStatusSimplified(arg interface{}) bool {
+	removeUninitializedTaint := arg.(bool)
+	ctxReq := utils.GenerateRequestContext()
+	log := utils.RequestIDLogger(ctxReq, c.log)
+
+	nodes, err := c.kc.ListNodes()
+	if err != nil {
+		log.WithError(err).Error("Failed to get list of nodes from k8s client")
+		return KeepWaiting
+	}
+
+	// numRunningNodes := 0
+	// for _, node := range nodes.Items {
+	// 	log.Infof("RWSU node: %s node.Status.Phase: %s", node.Name, node.Status.Phase)
+	// 	log.Infof("RWSU node: %s node.node.Status.Conditions: %v", node.Name, node.Status.Conditions)
+	// 	if node.Status.Phase == v1.NodeRunning {
+	// 		numRunningNodes++
+	// 	}
+	// }
+
+	// if numRunningNodes == len(nodes.Items) {
+	// 	// All nodes are running, exit
+	// 	return ExitWaiting
+	// }
+
+	numReadyNodes := 0
+	for _, node := range nodes.Items {
+		ready := common.IsK8sNodeIsReady(node)
+		if !ready && removeUninitializedTaint {
+			log.Infof("RWSU removing taint on node: %s", node.Name)
+			if err := c.kc.UntaintNode(node.Name); err != nil {
+				log.WithError(err).Errorf("Failed to remove uninitialized taint from node %s", node.Name)
+				continue
+			}
+		}
+		if ready {
+			log.Infof("RWSU node: %s is ready", node.Name)
+			numReadyNodes++
+		} else {
+			log.Infof("RWSU node: %s is NOT ready", node.Name)
+		}
+	}
+
+	clusterVersion, err := c.kc.GetClusterVersion()
+	if err != nil {
+		log.WithError(err).Error("Failed to get cluster version from k8s client")
+	}
+	for _, condition := range clusterVersion.Status.Conditions {
+		if condition.Type == "Available" && condition.Status == "True" {
+			// cluster install is complete, we can exit
+			log.Info("RWSU ClusterVersion Available=True")
+			return ExitWaiting
+		}
+	}
+
+	log.Info("RWSU ClusterVersion Available!=True")
+
+	// if len(nodes.Items) > 0 && numReadyNodes == len(nodes.Items) {
+	// 	// All nodes are running, exit
+	// 	log.Infof("RWSU %v nodes ready, exiting", len(nodes.Items))
+	// 	return ExitWaiting
+	// }
+
+	return KeepWaiting
 }
 
 func (c *controller) waitAndUpdateNodesStatus(arg interface{}) bool {

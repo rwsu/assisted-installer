@@ -157,8 +157,8 @@ func main() {
 	}
 	go assistedController.WaitAndUpdateNodesStatus(mainContext, &wg, removeUninitializedTaint)
 	wg.Add(1)
-	go assistedController.PostInstallConfigs(mainContext, &wg)
-	wg.Add(1)
+	// go assistedController.PostInstallConfigs(mainContext, &wg)
+	// wg.Add(1)
 
 	if *cluster.Platform.Type == models.PlatformTypeBaremetal {
 		go assistedController.UpdateBMHs(mainContext, &wg)
@@ -167,14 +167,34 @@ func main() {
 		logger.Infof("Cluster platform is not %s, skipping BMH", models.PlatformTypeBaremetal)
 	}
 
-	go assistedController.UploadLogs(mainContext, &wg)
-	wg.Add(1)
+	// go assistedController.UploadLogs(mainContext, &wg)
+	// wg.Add(1)
 
-	go assistedController.UpdateNodeLabels(mainContext, &wg)
-	wg.Add(1)
+	// go assistedController.UpdateNodeLabels(mainContext, &wg)
+	// wg.Add(1)
 
 	// monitoring installation by cluster status
-	waitForInstallation(client, logger, assistedController.Status)
+	// waitForInstallation(client, logger, assistedController.Status)
+	waitForInstallationNonSAAS(kc, logger)
+}
+
+func waitForInstallationNonSAAS(kubeClient k8s_client.K8SClient, log logrus.FieldLogger) {
+	for {
+		log.Info("RWSU2 waitForInstallationNonSAAS")
+		clusterVersion, err := kubeClient.GetClusterVersion()
+		if err != nil {
+			log.WithError(err).Error("RWSU2 Wait Failed to get cluster version from k8s client")
+		}
+		for _, condition := range clusterVersion.Status.Conditions {
+			if condition.Type == "Available" && condition.Status == "True" {
+				// cluster install is complete, we can exit
+				log.Info("RWSU2 Wait ClusterVersion Available=True")
+				return
+			}
+		}
+		log.Info("RWSU2 Wait ClusterVersion Available!=True, sleeping 30s")
+		time.Sleep(30 * time.Second)
+	}
 }
 
 // waitForInstallation monitor cluster status and is blocking main from cancelling all go routine s
